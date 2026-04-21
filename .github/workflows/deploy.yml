@@ -1,4 +1,4 @@
-name: Deploy AdonisJS App (SCP Method)
+name: Deploy AdonisJS App
 
 on:
   push:
@@ -7,67 +7,71 @@ on:
 
 jobs:
   deploy:
+    name: Build, Transfer, and Deploy
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      # 1. Check out the repository code to the GitHub Action runner
+      - name: Checkout code
         uses: actions/checkout@v3
 
-      # 1. Archive the project files (Ignoring unnecessary folders)
+      # 2. Package the files into a tarball (excluding unnecessary files/folders)
       - name: Archive project files
         run: |
           tar -czf app.tar.gz \
             --exclude=node_modules \
-            --exclude=build \
             --exclude=.git \
             --exclude=.github \
             --exclude=*.log \
+            --exclude=build \
             --ignore-failed-read \
             .
 
-      # 2. Transfer the archive to the server
-      - name: Copy files to server via SCP
+      # 3. Securely copy the tarball to your server
+      - name: Copy files to server
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SERVER_PORT }} 
           source: "app.tar.gz"
           target: ${{ secrets.SERVER_DIR }}
 
-      # 3. SSH in, extract, build, and restart PM2
-      - name: Extract, Build, and Deploy via SSH
+      # 4. SSH into the server, unpack, build, and restart PM2
+      - name: SSH into server and deploy
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SERVER_PORT }} 
           script: |
-            # Load Node/PM2 environment for non-interactive shell
+            # --- ADDED: Load Node/PM2 environment for non-interactive shell ---
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            # ------------------------------------------------------------------
+
+            # --- ISOLATION: USE NODE 22 JUST FOR THIS GITHUB ACTION SESSION ---
+            nvm use 22
+            # ------------------------------------------------------------------
 
             # Navigate to the server directory
             cd ${{ secrets.SERVER_DIR }}
             
-            # Extract the pushed code and remove the tar file
+            # Extract the uploaded archive and remove the tarball
             tar -xzf app.tar.gz
             rm app.tar.gz
             
-            # Install root dependencies
+            # Install dependencies cleanly
             npm ci
             
             # Run migrations non-interactively
             node ace migration:run --force
-            # node ace db:seed --files database/seeders/approve_pending_kyc_seeder.ts
-            # node ace db:seed --files database/seeders/reject_pending_kyc_seeder.ts
-            # node ace db:seed --files="database/seeders/notification_seeder.ts"
-            # node ace db:seed --files="database/seeders/update_kyc_accepted_document_seeder.ts"
-            # node ace db:seed --files="database/seeders/approve_latest_kyc_seeder.ts"
-            # node ace db:seed --files="database/seeders/push_notification_seeder.ts"
 
+            # Run Seeder (Uncomment if needed)
+            #node ace db:seed --files=database/seeders/proof_of_address_seeder.ts
+            
             # Build the AdonisJS project
             npm run build -- --ignore-ts-errors
             
@@ -77,14 +81,17 @@ jobs:
             # Navigate to the build folder and install production dependencies
             cd build
             npm ci --omit="dev"
+
+            # --- FIX: SWITCH BACK TO YOUR DEFAULT NODE VERSION TO ACCESS PM2 ---
+            nvm use default
             
             # Handle PM2: Restart if exists, start from ecosystem if it doesn't
             if pm2 show mobile-api > /dev/null 2>&1; then
               echo "App 'mobile-api' is already running. Restarting..."
-              pm2 restart mobile-api
+              pm2 restart mobile-api --update-env
             else
               echo "App 'mobile-api' not found. Starting for the first time..."
-              pm2 start ~/ecosystem.config.js --only mobile-api --update-env
+              pm2 start ~/ecosystem.config.js --only mobile-api
             fi
             
             # Save the PM2 list so it restarts automatically on server reboot
