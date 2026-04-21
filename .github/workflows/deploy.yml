@@ -79,12 +79,12 @@ jobs:
             npm ci --omit="dev"
             
             # Handle PM2: Restart if exists, start from ecosystem if it doesn't
-            if pm2 show umfb > /dev/null 2>&1; then
-              echo "App 'umfb' is already running. Restarting..."
-              pm2 restart umfb
+            if pm2 show mobile-api > /dev/null 2>&1; then
+              echo "App 'mobile-api' is already running. Restarting..."
+              pm2 restart mobile-api
             else
-              echo "App 'umfb' not found. Starting for the first time..."
-              pm2 start ~/ecosystem.config.js --only umfb --update-env
+              echo "App 'mobile-api' not found. Starting for the first time..."
+              pm2 start ~/ecosystem.config.js --only mobile-api --update-env
             fi
             
             # Save the PM2 list so it restarts automatically on server reboot
