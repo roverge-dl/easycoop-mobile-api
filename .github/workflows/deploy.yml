@@ -1,0 +1,91 @@
+name: Deploy AdonisJS App (SCP Method)
+
+on:
+  push:
+    branches:
+      - deploy 
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      # 1. Archive the project files (Ignoring unnecessary folders)
+      - name: Archive project files
+        run: |
+          tar -czf app.tar.gz \
+            --exclude=node_modules \
+            --exclude=build \
+            --exclude=.git \
+            --exclude=.github \
+            --exclude=*.log \
+            --ignore-failed-read \
+            .
+
+      # 2. Transfer the archive to the server
+      - name: Copy files to server via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT }} 
+          source: "app.tar.gz"
+          target: ${{ secrets.SERVER_DIR }}
+
+      # 3. SSH in, extract, build, and restart PM2
+      - name: Extract, Build, and Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT }} 
+          script: |
+            # Load Node/PM2 environment for non-interactive shell
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
+            # Navigate to the server directory
+            cd ${{ secrets.SERVER_DIR }}
+            
+            # Extract the pushed code and remove the tar file
+            tar -xzf app.tar.gz
+            rm app.tar.gz
+            
+            # Install root dependencies
+            npm ci
+            
+            # Run migrations non-interactively
+            node ace migration:run --force
+            # node ace db:seed --files database/seeders/approve_pending_kyc_seeder.ts
+            # node ace db:seed --files database/seeders/reject_pending_kyc_seeder.ts
+            # node ace db:seed --files="database/seeders/notification_seeder.ts"
+            # node ace db:seed --files="database/seeders/update_kyc_accepted_document_seeder.ts"
+            # node ace db:seed --files="database/seeders/approve_latest_kyc_seeder.ts"
+            # node ace db:seed --files="database/seeders/push_notification_seeder.ts"
+
+            # Build the AdonisJS project
+            npm run build -- --ignore-ts-errors
+            
+            # Copy the environment file to the build directory
+            cp .env build/.env
+            
+            # Navigate to the build folder and install production dependencies
+            cd build
+            npm ci --omit="dev"
+            
+            # Handle PM2: Restart if exists, start from ecosystem if it doesn't
+            if pm2 show umfb > /dev/null 2>&1; then
+              echo "App 'umfb' is already running. Restarting..."
+              pm2 restart umfb
+            else
+              echo "App 'umfb' not found. Starting for the first time..."
+              pm2 start ~/ecosystem.config.js --only umfb --update-env
+            fi
+            
+            # Save the PM2 list so it restarts automatically on server reboot
+            pm2 save
