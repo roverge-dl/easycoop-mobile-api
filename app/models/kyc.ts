@@ -1,12 +1,17 @@
 import { DateTime } from 'luxon'
-import { BaseModel, column, belongsTo } from '@adonisjs/lucid/orm'
+import { BaseModel, column, belongsTo, beforeCreate } from '@adonisjs/lucid/orm'
 import type { BelongsTo } from '@adonisjs/lucid/types/relations'
 
-// ⚠️ Placeholder Import: Uncomment this as we build them
 import User from '#models/user'
+import KycRequirement from '#models/kyc_requirement'
 
 export default class Kyc extends BaseModel {
   public static table = 'kyc_records'
+
+  @beforeCreate()
+  public static async generateId(model: KycRequirement) {
+    model.id = crypto.randomUUID()
+  }
 
   // ==================== COLUMNS ====================
 
@@ -16,6 +21,13 @@ export default class Kyc extends BaseModel {
   @column()
   declare userId: string
 
+  /**
+   * Links to the new KycRequirement blueprint table
+   */
+  @column()
+  declare requirementId: string
+
+  // --- Legacy Columns Maintained for Backwards Compatibility ---
   @column()
   declare identificationDocument: string
 
@@ -31,7 +43,6 @@ export default class Kyc extends BaseModel {
   @column()
   declare documentFile: string | null
 
-  // Stored as a string in Sequelize, so we keep it as a string here
   @column()
   declare dob: string | null
 
@@ -43,7 +54,9 @@ export default class Kyc extends BaseModel {
   @column.dateTime({ autoCreate: true, autoUpdate: true })
   declare updatedAt: DateTime
 
-  // Replicates Sequelize's paranoid: true
+  /**
+   * Replicates Sequelize's paranoid: true
+   */
   @column.dateTime()
   declare deletedAt: DateTime | null
 
@@ -51,4 +64,7 @@ export default class Kyc extends BaseModel {
 
   @belongsTo(() => User)
   declare user: BelongsTo<typeof User>
+
+  @belongsTo(() => KycRequirement)
+  declare requirement: BelongsTo<typeof KycRequirement>
 }

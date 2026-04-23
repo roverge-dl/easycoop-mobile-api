@@ -221,13 +221,14 @@ export default class AuthController {
         phone,
       })
       if (verifyOtp.status === 'success') {
-        await AuthService.createUserAccount({
-          firstName: first_name,
-          lastName: last_name,
-          email,
-          phone,
-          password,
-        })
+        return response.status(200).json(verifyOtp)
+        // await AuthService.createUserAccount({
+        //   firstName: first_name,
+        //   lastName: last_name,
+        //   email,
+        //   phone,
+        //   password,
+        // })
       } else {
         return response.status(400).json(verifyOtp)
       }

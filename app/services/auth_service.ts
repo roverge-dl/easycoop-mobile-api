@@ -8,7 +8,6 @@ import type { HttpContext } from '@adonisjs/core/http'
 import Password from '#models/password'
 import db from '@adonisjs/lucid/services/db'
 import Wallet from '#models/wallet'
-import { hash } from 'node:crypto'
 
 interface MailData {
   name?: string
@@ -100,8 +99,13 @@ export default class AuthService {
     purpose: string,
     password?: string,
     regPayload?: { firstName: string; lastName: string; email: string; phone: string }
-  ): Promise<{ status: 'success' | 'fail'; message: string; token?: string; error?: string }> {
-    console.log('otp', otp)
+  ): Promise<{
+    status: 'success' | 'fail'
+    message: string
+    token?: string
+    error?: string
+    data?: any
+  }> {
     try {
       let channel: 'email' | 'phone'
       // let identifier_db_value = identifier // This variable is not used after modification, can be removed if not needed elsewhere
@@ -132,12 +136,35 @@ export default class AuthService {
             password: password,
           })
           await redis.del(identifier + '_otp')
-          const token = await auth.use('api').createToken(user, ['*'])
+          // const token = await auth.use('api').createToken(user, ['*'])
 
+          // return {
+          //   status: 'success',
+          //   message: 'Phone verified successfully.',
+          //   token: token?.value?.release(),
+          // }
+
+          const { roles, permissions } = await AuthService.getUserRolesAndPermissions(user.id)
+
+          // 6. Generate Opaque Tokens
+          const accessTokenObj = await User.accessTokens.create(user, ['*'], {
+            expiresIn: '3 hours',
+          })
+          const refreshTokenObj = await User.accessTokens.create(user, ['refresh'], {
+            expiresIn: '7 days',
+          })
+
+          // 7. Return the exact JSON structure your legacy app expects
           return {
             status: 'success',
-            message: 'Phone verified successfully.',
-            token: token?.value?.release(),
+            message: 'Regsitration successful',
+            data: {
+              user: user,
+              roles: roles,
+              permissions: permissions,
+              accessToken: accessTokenObj.value!.release(),
+              refreshToken: refreshTokenObj.value!.release(),
+            },
           }
         } else if (purpose === 'reset_password' && password) {
           const user = await User.query().where(channel, identifier).first()

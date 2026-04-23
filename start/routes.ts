@@ -8,7 +8,10 @@
 */
 
 const AuthController = () => import('#controllers/auth_controller')
+const KycController = () => import('#controllers/kyc_controller')
+
 import router from '@adonisjs/core/services/router'
+import { middleware } from '#start/kernel'
 
 router.get('/', async () => {
   return {
@@ -43,5 +46,17 @@ router
         router.post('/login', [AuthController, 'login'])
       })
       .prefix('/auth')
+
+    router
+      .group(() => {
+        // KYC Routes
+        router
+          .group(() => {
+            router.get('/next-step', [KycController, 'getNextStep'])
+            router.post('/:id/submit', [KycController, 'submitStep'])
+          })
+          .prefix('/kyc')
+      })
+      .use(middleware.auth())
   })
   .prefix('api/v1')
