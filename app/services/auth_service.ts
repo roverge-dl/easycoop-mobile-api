@@ -20,7 +20,7 @@ export default class AuthService {
   static async sendOtp(mail_data: MailData, channel: string) {
     console.log('mail_data', mail_data)
     try {
-      const code = await generateOTP()
+      const code = await generateOTP(5)
       let recipient_box = ''
       if (channel === 'email') {
         recipient_box = mail_data.recipient.phone!
